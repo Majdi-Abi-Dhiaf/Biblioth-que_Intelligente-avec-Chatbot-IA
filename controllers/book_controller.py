@@ -1,116 +1,93 @@
-from multiprocessing import connection
+from database.db_manager import DatabaseManager
+from models.livre import Livre
 
-from database.db import get_connection
-from models.book import Book
+
 class Book_controller:
-    def add_book(self,book:Book):
-        connection= get_connection()
-        cursor = connection.cursor()
-        cursor.execute("""
-        
-        INSERT INTO books(
-                titre,
-                auteur,
-                categorie,
-                annee_publication,
-                quantite_disponible,
-                statut )
-        VALUES(?,?,?,?,?,?)
-        """,( book.titre,
-            book.auteur,
-            book.categorie,
-            book.annee_publication,
-            book.quantite_disponible,
-            book.statut)
-        )
-        connection.commit()
-        connection.close()
+    def __init__(self):
+        self.db = DatabaseManager()
 
+    # ─── CRUD ────────────────────────────────────────────────────────────────
 
     def get_all_books(self):
-        connection = get_connection()
-        cursor = connection.cursor()
-        cursor.execute("SELECT * FROM books")
-        books = cursor.fetchall()
-        connection.close()
-        return books
-    
-    def get_by_id (self, id_livre):
-        connection = get_connection()
-        cursor =connection.cursor()
-        cursor.execute("SELECT * FROM books WHERE id_livre=?",(id_livre,))
-        book= cursor.fetchone()
-        cursor.close()
-        return book 
-    def search_book(self, keyword):
-        connection =get_connection()
-        cursor = connection.cursor()
-        cursor.execute("SELECT * FROM books WHERE title LIKE ? OR auteur LIKE ? OR categorie LIKE ? ",(  f"%{keyword}%",f"%{keyword}%",f"%{keyword}%"))
-        books = cursor.fetchall()
-        connection.close()
-        return books
-    def update_book(self,book:Book):
-        connection= get_connection()
-        cursor=connection.cursor()
-        cursor.execute("UPDATE books SET titre = ?,auteur = ?,categorie = ?,annee_publication = ?,quantite_disponible = ?,statut = ? WHERE id_livre = ? ",(
-            book.titre,
-            book.auteur,
-            book.categorie,
-            book.annee_publication,
-            book.quantite_disponible,
-            book.statut,
-            book.id_livre
-        ))
-        connection.commit()
-        connection.close()
+        rows = self.db.fetch_all("SELECT * FROM livres ORDER BY id_livre")
+        return [Livre.from_dict(r) for r in rows]
 
-    def delete_book(self, id_livre):
-        connection = get_connection()
-        cursor = connection.cursor()
+    def get_book_by_id(self, book_id):
+        row = self.db.fetch_one("SELECT * FROM livres WHERE id_livre=?", (book_id,))
+        return Livre.from_dict(row) if row else None
 
-        cursor.execute(
-            "DELETE FROM books WHERE id_livre = ?",
-            (id_livre,)
+    def add_book(self, livre: Livre):
+        self.db.execute_query(
+            "INSERT INTO livres (titre, auteur, categorie, annee_publication, quantite_disponible, statut) VALUES (?,?,?,?,?,?)",
+            livre.to_tuple()
         )
 
-        connection.commit()
-        connection.close()
-        
-    def get_statistics(self):
-        connection = get_connection()
-        cursor = connection.cursor()
+    def update_book(self, livre: Livre):
+        self.db.execute_query(
+            "UPDATE livres SET titre=?, auteur=?, categorie=?, annee_publication=?, quantite_disponible=?, statut=? WHERE id_livre=?",
+            (*livre.to_tuple(), livre.id_livre)
+        )
 
-        # Total books
-        cursor.execute("SELECT COUNT(*) FROM books")
-        total_books = cursor.fetchone()[0]
+    def delete_book(self, book_id):
+        self.db.execute_query("DELETE FROM livres WHERE id_livre=?", (book_id,))
 
-        # Available books
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM books
-            WHERE statut = 'disponible'
-        """)
-        available_books = cursor.fetchone()[0]
+    # ─── Search ───────────────────────────────────────────────────────────────
 
-        # Total authors
-        cursor.execute("""
-            SELECT COUNT(DISTINCT auteur)
-            FROM books
-        """)
-        total_authors = cursor.fetchone()[0]
+    def search_by_title(self, titre):
+        rows = self.db.fetch_all(
+            "SELECT * FROM livres WHERE titre LIKE ? ORDER BY titre",
+            (f"%{titre}%",)
+        )
+        return [Livre.from_dict(r) for r in rows]
 
-        # Total categories
-        cursor.execute("""
-            SELECT COUNT(DISTINCT categorie)
-            FROM books
-        """)
-        total_categories = cursor.fetchone()[0]
+    def search_by_author(self, auteur):
+        rows = self.db.fetch_all(
+            "SELECT * FROM livres WHERE auteur LIKE ? ORDER BY auteur",
+            (f"%{auteur}%",)
+        )
+        return [Livre.from_dict(r) for r in rows]
 
-        connection.close()
+    def search_by_id(self, book_id):
+        livre = self.get_book_by_id(book_id)
+        return [livre] if livre else []
 
+    # ─── Statistics ───────────────────────────────────────────────────────────
+
+    def get_stats(self):
+        total = self.db.fetch_one("SELECT COUNT(*) as c FROM livres")["c"]
+        disponible = self.db.fetch_one("SELECT COUNT(*) as c FROM livres WHERE statut='disponible'")["c"]
+        emprunte = self.db.fetch_one("SELECT COUNT(*) as c FROM livres WHERE statut='emprunté'")["c"]
+        reserve = self.db.fetch_one("SELECT COUNT(*) as c FROM livres WHERE statut='réservé'")["c"]
         return {
-            "total_books": total_books,
-            "available_books": available_books,
-            "total_authors": total_authors,
-            "total_categories": total_categories
+            "total": total,
+            "disponible": disponible,
+            "emprunte": emprunte,
+            "reserve": reserve,
         }
+
+    def get_recent_books(self, limit=5):
+        rows = self.db.fetch_all(
+            "SELECT * FROM livres ORDER BY id_livre DESC LIMIT ?", (limit,)
+        )
+        return [Livre.from_dict(r) for r in rows]
+
+    # ─── Chatbot helpers ──────────────────────────────────────────────────────
+
+    def book_exists(self, titre):
+        rows = self.db.fetch_all(
+            "SELECT * FROM livres WHERE titre LIKE ?", (f"%{titre}%",)
+        )
+        return [Livre.from_dict(r) for r in rows]
+
+    def get_by_category(self, categorie):
+        rows = self.db.fetch_all(
+            "SELECT * FROM livres WHERE categorie LIKE ?", (f"%{categorie}%",)
+        )
+        return [Livre.from_dict(r) for r in rows]
+
+    def get_categories(self):
+        rows = self.db.fetch_all("SELECT DISTINCT categorie FROM livres ORDER BY categorie")
+        return [r["categorie"] for r in rows]
+
+    def close(self):
+        self.db.close()
