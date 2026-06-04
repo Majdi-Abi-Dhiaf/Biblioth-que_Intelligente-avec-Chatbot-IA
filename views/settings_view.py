@@ -106,9 +106,9 @@ class SettingsView(ctk.CTkFrame):
         api_card.pack(fill="x", pady=(0, 16))
 
         api_items = [
-            ("Fournisseur", "Anthropic Claude"),
-            ("Modèle",      "claude-sonnet-4-20250514"),
-            ("Endpoint",    "https://api.anthropic.com/v1/messages"),
+            ("Fournisseur", "Groq"),
+            ("Modèle",      "llama-3.3-70b-versatile"),
+            ("Endpoint",    "https://api.groq.com/openai/v1/chat/completions"),
             ("Mode",        "Chatbot bibliothécaire intelligent"),
             ("Fallback",    "Réponses locales si API indisponible"),
         ]
@@ -138,7 +138,7 @@ class SettingsView(ctk.CTkFrame):
                      font=ctk.CTkFont(size=12), text_color="#888",
                      justify="center").pack(pady=(10, 0))
 
-        ctk.CTkLabel(about_frame, text="Développé par Majdi Abi Dhiaf",
+        ctk.CTkLabel(about_frame, text="Développé par Majdi Abi Dhiaf & Chaima Bouazizi",
                      font=ctk.CTkFont(size=12, weight="bold"),
                      text_color="#3B82F6").pack(pady=(10, 4))
 
@@ -148,7 +148,7 @@ class SettingsView(ctk.CTkFrame):
             ("Python 3", "#3B82F6"),
             ("CustomTkinter", "#10B981"),
             ("SQLite", "#F59E0B"),
-            ("Anthropic API", "#8B5CF6"),
+            ("Groq API", "#8B5CF6"),
         ]:
             badge = ctk.CTkFrame(tech_frame, fg_color=color, corner_radius=20)
             badge.pack(side="left", padx=4)

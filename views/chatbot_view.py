@@ -8,8 +8,13 @@ import re
 import os
 
 
-# ─── Optional: set your API key here or in environment ────────────────────────
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+# ══════════════════════════════════════════════════════════════════════════════
+#  🔑  GROQ API KEY  (free at console.groq.com)
+# ══════════════════════════════════════════════════════════════════════════════
+
+GROQ_MODEL   = "llama-3.3-70b-versatile"
+GROQ_URL     = "https://api.groq.com/openai/v1/chat/completions"
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 class ChatbotView(ctk.CTkFrame):
@@ -17,6 +22,7 @@ class ChatbotView(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent")
         self.controller = controller
         self.conversation_history = []
+        self._api_error_msg = None          # stores last API error for display
         self._build_ui()
         self._welcome_message()
 
@@ -25,10 +31,24 @@ class ChatbotView(ctk.CTkFrame):
     # ══════════════════════════════════════════════════════════════════════════
 
     def _build_ui(self):
+        # ── Header ────────────────────────────────────────────────────────────
         header = ctk.CTkFrame(self, fg_color="transparent")
         header.pack(fill="x", padx=30, pady=(25, 0))
-        ctk.CTkLabel(header, text="🤖  Chatbot IA — Bibliothèque",
-                     font=ctk.CTkFont(size=24, weight="bold")).pack(side="left")
+
+        ctk.CTkLabel(
+            header, text="🤖  Chatbot IA — Bibliothèque",
+            font=ctk.CTkFont(size=24, weight="bold")
+        ).pack(side="left")
+
+        # API status badge — green if key set
+        _key_ok = bool(GROQ_API_KEY)
+        badge_color = "#10B981" if _key_ok else "#EF4444"
+        badge_text  = "● Groq IA Connecté" if _key_ok else "● Clé API manquante"
+        ctk.CTkLabel(
+            header, text=badge_text,
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=badge_color
+        ).pack(side="left", padx=18, pady=(6, 0))
 
         ctk.CTkButton(
             header, text="🧹  Nouvelle conversation",
@@ -44,14 +64,17 @@ class ChatbotView(ctk.CTkFrame):
             font=ctk.CTkFont(size=13), text_color="#888"
         ).pack(anchor="w", padx=30, pady=(4, 14))
 
+        # ── Chat container ────────────────────────────────────────────────────
         chat_container = ctk.CTkFrame(self, corner_radius=14)
         chat_container.pack(fill="both", expand=True, padx=30, pady=(0, 16))
 
-        # ── Suggestion chips ──────────────────────────────────────────────────
+        # Suggestion chips
         sug_row = ctk.CTkFrame(chat_container, fg_color="transparent")
         sug_row.pack(fill="x", padx=16, pady=(14, 2))
-        ctk.CTkLabel(sug_row, text="Suggestions :", font=ctk.CTkFont(size=12),
-                     text_color="#888").pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(
+            sug_row, text="Suggestions :",
+            font=ctk.CTkFont(size=12), text_color="#888"
+        ).pack(side="left", padx=(0, 8))
 
         chips = [
             "Livres disponibles",
@@ -71,18 +94,20 @@ class ChatbotView(ctk.CTkFrame):
                 font=ctk.CTkFont(size=11), width=0
             ).pack(side="left", padx=3)
 
-        # ── Chat scroll area ──────────────────────────────────────────────────
+        # Scrollable messages
         self.chat_scroll = ctk.CTkScrollableFrame(chat_container, fg_color="transparent")
         self.chat_scroll.pack(fill="both", expand=True, padx=8, pady=8)
 
-        # ── Input bar ─────────────────────────────────────────────────────────
-        input_bar = ctk.CTkFrame(chat_container, fg_color=("#ececec", "#1c1c1c"), corner_radius=12)
+        # Input bar
+        input_bar = ctk.CTkFrame(
+            chat_container, fg_color=("#ececec", "#1c1c1c"), corner_radius=12
+        )
         input_bar.pack(fill="x", padx=12, pady=(0, 14))
 
         self.input_var = ctk.StringVar()
         self.input_entry = ctk.CTkEntry(
             input_bar, textvariable=self.input_var,
-            placeholder_text="Ex: Est-ce que Les Misérables est disponible ?  |  Recommande un roman",
+            placeholder_text="Ex: Est-ce que Les Misérables est disponible ?",
             height=44, corner_radius=10,
             font=ctk.CTkFont(size=13),
             border_width=0, fg_color="transparent"
@@ -101,14 +126,14 @@ class ChatbotView(ctk.CTkFrame):
 
     def _welcome_message(self):
         self._add_bot_message(
-            "Bonjour ! Je suis votre assistant bibliothécaire IA 📚\n\n"
+            "Bonjour ! Je suis votre assistant bibliothécaire IA propulsé par Groq 🤖\n\n"
             "Je peux vous aider à :\n"
             "🔍  Vérifier l'existence d'un livre (par titre ou ID)\n"
             "✅  Consulter la disponibilité d'un livre\n"
             "📖  Recommander des livres par genre ou auteur\n"
             "👤  Lister toutes les œuvres d'un auteur\n"
             "📊  Obtenir les statistiques de la collection\n\n"
-            "Posez votre question librement !"
+            "Posez votre question librement en français !"
         )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -124,11 +149,17 @@ class ChatbotView(ctk.CTkFrame):
 
         bubble = ctk.CTkFrame(right, fg_color="#2563EB", corner_radius=16)
         bubble.pack(anchor="e", padx=(80, 10))
-        ctk.CTkLabel(bubble, text=text, font=ctk.CTkFont(size=13),
-                     text_color="#fff", wraplength=440, justify="left").pack(padx=14, pady=10)
+        ctk.CTkLabel(
+            bubble, text=text,
+            font=ctk.CTkFont(size=13),
+            text_color="#fff",
+            wraplength=440, justify="left"
+        ).pack(padx=14, pady=10)
 
-        ctk.CTkLabel(right, text=self._ts(), font=ctk.CTkFont(size=10),
-                     text_color="#555").pack(anchor="e", padx=12)
+        ctk.CTkLabel(
+            right, text="Vous  " + self._ts(),
+            font=ctk.CTkFont(size=10), text_color="#555"
+        ).pack(anchor="e", padx=12)
         self._scroll_bottom()
 
     def _add_bot_message(self, text):
@@ -138,20 +169,44 @@ class ChatbotView(ctk.CTkFrame):
         left = ctk.CTkFrame(row, fg_color="transparent")
         left.pack(side="left", anchor="w")
 
-        top = ctk.CTkFrame(left, fg_color="transparent")
-        top.pack(anchor="w")
-
-        ctk.CTkLabel(top, text="🤖", font=ctk.CTkFont(size=20)).pack(side="left", padx=(8, 4))
-        ctk.CTkLabel(top, text="Assistant IA", font=ctk.CTkFont(size=11, weight="bold"),
-                     text_color="#6B7280").pack(side="left")
+        name_row = ctk.CTkFrame(left, fg_color="transparent")
+        name_row.pack(anchor="w")
+        ctk.CTkLabel(name_row, text="🤖", font=ctk.CTkFont(size=18)).pack(side="left", padx=(8, 4))
+        ctk.CTkLabel(
+            name_row,
+            text="Groq IA" if GROQ_API_KEY else "Assistant Local",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color="#10B981" if GROQ_API_KEY else "#F59E0B"
+        ).pack(side="left")
 
         bubble = ctk.CTkFrame(left, fg_color=("#dbeafe", "#162032"), corner_radius=16)
         bubble.pack(anchor="w", padx=(10, 80), pady=(2, 0))
-        ctk.CTkLabel(bubble, text=text, font=ctk.CTkFont(size=13),
-                     wraplength=480, justify="left").pack(padx=16, pady=12)
+        ctk.CTkLabel(
+            bubble, text=text,
+            font=ctk.CTkFont(size=13),
+            wraplength=500, justify="left"
+        ).pack(padx=16, pady=12)
 
-        ctk.CTkLabel(left, text=self._ts(), font=ctk.CTkFont(size=10),
-                     text_color="#555").pack(anchor="w", padx=12)
+        ctk.CTkLabel(
+            left, text=self._ts(),
+            font=ctk.CTkFont(size=10), text_color="#555"
+        ).pack(anchor="w", padx=12)
+        self._scroll_bottom()
+
+    def _add_error_message(self, text):
+        """Red bubble for API errors — so user can see what went wrong."""
+        row = ctk.CTkFrame(self.chat_scroll, fg_color="transparent")
+        row.pack(fill="x", pady=5)
+        left = ctk.CTkFrame(row, fg_color="transparent")
+        left.pack(side="left", anchor="w")
+        bubble = ctk.CTkFrame(left, fg_color=("#fee2e2", "#2d1010"), corner_radius=16)
+        bubble.pack(anchor="w", padx=(10, 80), pady=(2, 0))
+        ctk.CTkLabel(
+            bubble, text=text,
+            font=ctk.CTkFont(size=12),
+            text_color="#EF4444",
+            wraplength=500, justify="left"
+        ).pack(padx=16, pady=10)
         self._scroll_bottom()
 
     def _add_typing(self):
@@ -160,14 +215,18 @@ class ChatbotView(ctk.CTkFrame):
         ctk.CTkLabel(row, text="🤖", font=ctk.CTkFont(size=20)).pack(side="left", padx=(8, 4))
         bubble = ctk.CTkFrame(row, fg_color=("#dbeafe", "#162032"), corner_radius=14)
         bubble.pack(side="left")
-        ctk.CTkLabel(bubble, text="⏳  En train de répondre…",
-                     font=ctk.CTkFont(size=12), text_color="#6B7280").pack(padx=14, pady=10)
+        ctk.CTkLabel(
+            bubble,
+            text="⏳  Claude est en train de répondre…",
+            font=ctk.CTkFont(size=12), text_color="#6B7280"
+        ).pack(padx=14, pady=10)
         self._scroll_bottom()
         return row
 
     def _remove_typing(self, w):
         try:
-            w.pack_forget(); w.destroy()
+            w.pack_forget()
+            w.destroy()
         except Exception:
             pass
 
@@ -199,76 +258,130 @@ class ChatbotView(ctk.CTkFrame):
         self.send_message()
 
     def _get_response(self, user_msg, typing):
-        # Try real Anthropic API first (only if key is set)
-        if ANTHROPIC_API_KEY:
-            reply = self._call_anthropic_api(user_msg)
-        else:
-            reply = None
+        reply        = None
+        api_used     = False
+        error_detail = None
 
-        # Always fall back to our smart local engine
+        if GROQ_API_KEY:
+            reply, error_detail = self._call_groq_api(user_msg)
+            if reply:
+                api_used = True
+
         if not reply:
             reply = self._smart_local_response(user_msg)
 
         self.conversation_history.append({"role": "assistant", "content": reply})
-        self.after(0, lambda: self._deliver(reply, typing))
+        self.after(0, lambda: self._deliver(reply, typing, error_detail, api_used))
 
-    def _deliver(self, reply, typing):
+    def _deliver(self, reply, typing, error_detail, api_used):
         self._remove_typing(typing)
+        # If API failed, show the error in red first so user knows
+        if error_detail and not api_used:
+            self._add_error_message(f"⚠️  API Groq indisponible — utilisation du moteur local.\nDétail : {error_detail}")
         self._add_bot_message(reply)
         self.send_btn.configure(state="normal", text="Envoyer ➤")
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Anthropic API call (optional — needs key)
+    #  Groq API call — returns (text, error) tuple
     # ══════════════════════════════════════════════════════════════════════════
 
-    def _call_anthropic_api(self, user_msg):
+    def _call_groq_api(self, user_msg):
+        """
+        Returns (reply_text, None)  on success
+        Returns (None, error_string) on failure
+        """
         try:
             stats  = self.controller.get_stats()
             books  = self.controller.get_all_books()
+
             catalog = "\n".join([
-                f"ID {b.id_livre} | «{b.titre}» | {b.auteur} | {b.categorie} | {b.annee_publication or '?'} | {b.statut} | qté:{b.quantite_disponible}"
+                f"ID {b.id_livre} | «{b.titre}» | Auteur: {b.auteur} | "
+                f"Catégorie: {b.categorie} | Année: {b.annee_publication or 'N/A'} | "
+                f"Statut: {b.statut} | Quantité: {b.quantite_disponible}"
                 for b in books
             ])
-            system = (
-                "Tu es un assistant bibliothécaire IA francophone expert.\n"
-                f"Statistiques: total={stats['total']}, disponibles={stats['disponible']}, empruntés={stats['emprunte']}, réservés={stats['reserve']}\n\n"
-                f"CATALOGUE:\n{catalog}\n\n"
-                "Réponds en français, de façon précise et structurée. "
-                "Pour chaque livre mentionné, indique toujours: titre, auteur, statut, quantité. "
-                "Utilise des emojis pour rendre la réponse agréable."
-            )
+
+            system_prompt = f"""Tu es un assistant bibliothécaire IA expert et chaleureux pour la "Bibliothèque Intelligente".
+Tu parles UNIQUEMENT en français. Tes réponses sont naturelles, précises et bien structurées.
+
+=== STATISTIQUES EN TEMPS RÉEL ===
+- Total livres   : {stats['total']}
+- Disponibles    : {stats['disponible']}
+- Empruntés      : {stats['emprunte']}
+- Réservés       : {stats['reserve']}
+
+=== CATALOGUE COMPLET ===
+{catalog}
+
+=== RÈGLES IMPORTANTES ===
+1. Réponds TOUJOURS en français naturel et conversationnel
+2. Pour chaque livre mentionné, indique : titre, auteur, statut, quantité disponible
+3. Si un livre est emprunté ou réservé, dis-le clairement et propose une alternative
+4. Pour les recommandations, explique POURQUOI tu recommandes ce livre
+5. Si on cherche par ID, trouve le livre exact dans le catalogue
+6. Utilise des emojis pour rendre la réponse agréable (📚 ✅ 📤 🔖 📖 etc.)
+7. Sois précis avec les chiffres (quantités, années, IDs)
+8. Si la question ne concerne pas la bibliothèque, redirige poliment
+"""
+
+            messages = [{"role": "system", "content": system_prompt}]
+            messages += self.conversation_history[-10:]
+
             payload = json.dumps({
-                "model": "claude-sonnet-4-20250514",
+                "model": GROQ_MODEL,
+                "messages": messages,
                 "max_tokens": 1024,
-                "system": system,
-                "messages": self.conversation_history[-8:],
-            }).encode()
+                "temperature": 0.7,
+            }).encode("utf-8")
 
             req = urllib.request.Request(
-                "https://api.anthropic.com/v1/messages",
+                GROQ_URL,
                 data=payload,
                 headers={
-                    "Content-Type": "application/json",
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
+                    "Content-Type":  "application/json",
+                    "Authorization": f"Bearer {GROQ_API_KEY}",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "application/json",
                 },
                 method="POST"
             )
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                data = json.loads(resp.read())
-                return data["content"][0]["text"]
-        except Exception:
-            return None
+
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                text = data["choices"][0]["message"]["content"]
+                print(f"[Groq API] ✅ Success — {len(text)} chars")
+                return text, None
+
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8")
+            msg  = f"HTTP {e.code}: {body[:200]}"
+            print(f"[Groq API] ❌ {msg}")
+            return None, msg
+
+        except urllib.error.URLError as e:
+            msg = f"Connexion échouée: {e.reason}"
+            print(f"[Groq API] ❌ {msg}")
+            return None, msg
+
+        except KeyError as e:
+            msg = f"Réponse API inattendue — clé manquante: {e}"
+            print(f"[Groq API] ❌ {msg}")
+            return None, msg
+
+        except Exception as e:
+            msg = f"{type(e).__name__}: {e}"
+            print(f"[Groq API] ❌ {msg}")
+            return None, msg
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Smart local NLP engine  (works without any API key)
+    #  Smart local NLP engine  (fallback — no API needed)
     # ══════════════════════════════════════════════════════════════════════════
 
     def _smart_local_response(self, msg: str) -> str:
         ml = msg.lower().strip()
         books_all = self.controller.get_all_books()
 
-        # ── 1. Search by ID ───────────────────────────────────────────────────
+        # 1. Search by ID
         id_match = re.search(r"\b(?:id|numéro|numero|n°)\s*[:#]?\s*(\d+)\b", ml)
         if id_match:
             bid = int(id_match.group(1))
@@ -277,16 +390,16 @@ class ChatbotView(ctk.CTkFrame):
                 icon = "✅" if b.statut == "disponible" else ("📤" if b.statut == "emprunté" else "🔖")
                 return (
                     f"📖  Livre trouvé (ID {b.id_livre}) :\n\n"
-                    f"  📕  Titre    : {b.titre}\n"
-                    f"  ✍️   Auteur   : {b.auteur}\n"
-                    f"  🗂️   Catégorie: {b.categorie}\n"
-                    f"  📅  Année    : {b.annee_publication or 'Inconnue'}\n"
-                    f"  {icon}  Statut  : {b.statut.capitalize()}\n"
-                    f"  📦  Quantité : {b.quantite_disponible} exemplaire(s)"
+                    f"  📕  Titre     : {b.titre}\n"
+                    f"  ✍️   Auteur    : {b.auteur}\n"
+                    f"  🗂️   Catégorie : {b.categorie}\n"
+                    f"  📅  Année     : {b.annee_publication or 'Inconnue'}\n"
+                    f"  {icon}  Statut   : {b.statut.capitalize()}\n"
+                    f"  📦  Quantité  : {b.quantite_disponible} exemplaire(s)"
                 )
-            return f"❌  Aucun livre avec l'ID {bid} n'a été trouvé dans la bibliothèque."
+            return f"❌  Aucun livre avec l'ID {bid} trouvé."
 
-        # ── 2. Statistics ─────────────────────────────────────────────────────
+        # 2. Statistics
         if any(w in ml for w in ["statistique", "combien", "total", "bilan", "état", "etat", "résumé"]):
             s = self.controller.get_stats()
             cats = {}
@@ -296,28 +409,29 @@ class ChatbotView(ctk.CTkFrame):
             cat_lines = "\n".join([f"    • {c} : {n} livre(s)" for c, n in top_cats])
             return (
                 f"📊  Statistiques de la bibliothèque :\n\n"
-                f"  📚  Total livres      : {s['total']}\n"
-                f"  ✅  Disponibles       : {s['disponible']}\n"
-                f"  📤  Empruntés         : {s['emprunte']}\n"
-                f"  🔖  Réservés          : {s['reserve']}\n\n"
+                f"  📚  Total livres  : {s['total']}\n"
+                f"  ✅  Disponibles   : {s['disponible']}\n"
+                f"  📤  Empruntés     : {s['emprunte']}\n"
+                f"  🔖  Réservés      : {s['reserve']}\n\n"
                 f"  Top catégories :\n{cat_lines}"
             )
 
-        # ── 3. List all available books ───────────────────────────────────────
+        # 3. All available books
         if re.search(r"\b(tous|liste|lister|affich|montre|quels?)\b.*\bdisponible", ml) or \
-           (ml in ["livres disponibles", "disponibles"]):
+           ml in ["livres disponibles", "disponibles"]:
             avail = [b for b in books_all if b.statut == "disponible"]
             if not avail:
-                return "😔  Aucun livre n'est disponible pour le moment."
+                return "😔  Aucun livre disponible pour le moment."
             lines = "\n".join([
                 f"  {i+1}. «{b.titre}» — {b.auteur}  ({b.categorie})  ×{b.quantite_disponible}"
                 for i, b in enumerate(avail)
             ])
             return f"✅  {len(avail)} livre(s) disponible(s) :\n\n{lines}"
 
-        # ── 4. Author search ──────────────────────────────────────────────────
+        # 4. Author search
         author_match = re.search(
-            r"(?:de|par|auteur|livres?\s+de|œuvres?\s+de|oeuvres?\s+de)\s+([A-ZÀ-Ö][a-zà-ö]+(?:\s+[A-ZÀ-Öa-zà-ö]+)*)",
+            r"(?:de|par|auteur|livres?\s+de|œuvres?\s+de|oeuvres?\s+de)\s+"
+            r"([A-ZÀ-Ö][a-zà-ö]+(?:\s+[A-ZÀ-Öa-zà-ö]+)*)",
             msg
         )
         if author_match:
@@ -327,27 +441,24 @@ class ChatbotView(ctk.CTkFrame):
                 lines = []
                 for i, b in enumerate(found, 1):
                     icon = "✅" if b.statut == "disponible" else ("📤" if b.statut == "emprunté" else "🔖")
-                    lines.append(f"  {i}. «{b.titre}» {icon} {b.statut.capitalize()} ({b.quantite_disponible} ex.)")
-                return (
-                    f"👤  {name} est dans notre catalogue.\n"
-                    f"Voici ses œuvres disponibles :\n\n" + "\n".join(lines)
-                )
-            return f"❌  Aucun livre de «{name}» n'a été trouvé dans la bibliothèque."
+                    lines.append(f"  {i}. «{b.titre}»  {icon} {b.statut.capitalize()} ({b.quantite_disponible} ex.)")
+                return f"👤  Œuvres de {name} dans notre catalogue :\n\n" + "\n".join(lines)
+            return f"❌  Aucun livre de «{name}» trouvé."
 
-        # ── 5. Category / genre search ────────────────────────────────────────
+        # 5. Genre / category
         GENRE_MAP = {
             "roman historique": "Roman historique",
-            "science-fiction": "Science-Fiction",
-            "science fiction": "Science-Fiction",
-            "sf": "Science-Fiction",
-            "informatique": "Informatique",
-            "fiction": "Fiction",
-            "roman": "Roman",
-            "histoire": "Histoire",
-            "philosophie": "Philosophie",
-            "poésie": "Poésie",
-            "poesie": "Poésie",
-            "biographie": "Biographie",
+            "science-fiction":  "Science-Fiction",
+            "science fiction":  "Science-Fiction",
+            "sf":               "Science-Fiction",
+            "informatique":     "Informatique",
+            "fiction":          "Fiction",
+            "roman":            "Roman",
+            "histoire":         "Histoire",
+            "philosophie":      "Philosophie",
+            "poésie":           "Poésie",
+            "poesie":           "Poésie",
+            "biographie":       "Biographie",
         }
         for kw, cat in GENRE_MAP.items():
             if kw in ml:
@@ -357,22 +468,19 @@ class ChatbotView(ctk.CTkFrame):
                     for i, b in enumerate(found, 1):
                         icon = "✅" if b.statut == "disponible" else ("📤" if b.statut == "emprunté" else "🔖")
                         lines.append(f"  {i}. «{b.titre}» — {b.auteur}  {icon} {b.statut}  (×{b.quantite_disponible})")
-                    return f"🗂️  Livres en catégorie «{cat}» :\n\n" + "\n".join(lines)
-                return f"😔  Aucun livre en catégorie «{cat}» pour le moment."
+                    return f"🗂️  Livres «{cat}» :\n\n" + "\n".join(lines)
+                return f"😔  Aucun livre en catégorie «{cat}»."
 
-        # ── 6. Availability check for a specific title ────────────────────────
-        avail_kw = ["disponible", "emprunté", "emprunte", "peut-on", "puis-je", "emprunter"]
-        if any(w in ml for w in avail_kw):
-            # Try to find a book name in the sentence
+        # 6. Availability for a specific title
+        if any(w in ml for w in ["disponible", "emprunter", "peut-on", "puis-je", "emprunté"]):
             found = self._search_title_in_msg(msg, books_all)
             if found:
                 b = found[0]
                 if b.statut == "disponible":
                     return (
                         f"✅  «{b.titre}» est disponible !\n\n"
-                        f"  ✍️  Auteur   : {b.auteur}\n"
-                        f"  📦  Exemplaires disponibles : {b.quantite_disponible}\n"
-                        f"  🗂️  Catégorie : {b.categorie}\n\n"
+                        f"  ✍️  Auteur     : {b.auteur}\n"
+                        f"  📦  Exemplaires: {b.quantite_disponible}\n\n"
                         f"Vous pouvez l'emprunter dès maintenant 😊"
                     )
                 elif b.statut == "emprunté":
@@ -380,55 +488,50 @@ class ChatbotView(ctk.CTkFrame):
                         f"📤  «{b.titre}» est actuellement emprunté.\n\n"
                         f"  ✍️  Auteur : {b.auteur}\n"
                         f"  ❌  Statut : Emprunté\n\n"
-                        f"Souhaitez-vous le réserver ? Je peux l'enregistrer pour vous."
+                        f"Souhaitez-vous le réserver ?"
                     )
                 else:
                     return (
                         f"🔖  «{b.titre}» est actuellement réservé.\n\n"
                         f"  ✍️  Auteur : {b.auteur}\n"
-                        f"  ⏳  Statut : Réservé\n\n"
-                        f"Il sera disponible prochainement."
+                        f"  ⏳  Il sera disponible prochainement."
                     )
 
-        # ── 7. Recommendations ────────────────────────────────────────────────
-        rec_kw = ["recommand", "suggère", "suggere", "propose", "conseil", "meilleur", "facile à lire",
-                  "aime lire", "je cherche", "je veux"]
-        if any(w in ml for w in rec_kw):
-            # Try to match a genre
+        # 7. Recommendations
+        if any(w in ml for w in ["recommand", "suggère", "suggere", "propose", "conseil",
+                                   "meilleur", "je cherche", "je veux"]):
             for kw, cat in GENRE_MAP.items():
                 if kw in ml:
                     pool = [b for b in books_all if cat.lower() in b.categorie.lower()]
                     if pool:
                         return self._format_recommendations(pool, f"genre «{cat}»")
-            # General recommendations — prefer available books
             pool = sorted(books_all, key=lambda b: (b.statut != "disponible", b.titre))
             return self._format_recommendations(pool[:6], "notre catalogue")
 
-        # ── 8. Existence check for a title ────────────────────────────────────
-        exist_kw = ["existe", "avez-vous", "avez vous", "est-ce que", "est ce que",
-                    "cherche", "trouve", "trouver"]
-        if any(w in ml for w in exist_kw):
+        # 8. Existence check
+        if any(w in ml for w in ["existe", "avez-vous", "avez vous", "est-ce que",
+                                   "cherche", "trouve", "trouver"]):
             found = self._search_title_in_msg(msg, books_all)
             if found:
                 b = found[0]
                 icon = "✅" if b.statut == "disponible" else ("📤" if b.statut == "emprunté" else "🔖")
                 return (
-                    f"📖  Oui, ce livre existe dans la bibliothèque !\n\n"
-                    f"  📕  Titre    : {b.titre}\n"
-                    f"  ✍️  Auteur   : {b.auteur}\n"
-                    f"  📅  Année    : {b.annee_publication or 'Inconnue'}\n"
-                    f"  {icon}  Statut  : {b.statut.capitalize()}\n"
-                    f"  📦  Quantité : {b.quantite_disponible} exemplaire(s)"
+                    f"📖  Oui, ce livre existe !\n\n"
+                    f"  📕  Titre     : {b.titre}\n"
+                    f"  ✍️  Auteur    : {b.auteur}\n"
+                    f"  📅  Année     : {b.annee_publication or 'Inconnue'}\n"
+                    f"  {icon}  Statut   : {b.statut.capitalize()}\n"
+                    f"  📦  Quantité  : {b.quantite_disponible} exemplaire(s)"
                 )
 
-        # ── 9. Generic title search (any non-stop word > 3 chars) ──────────────
+        # 9. Generic title search
         found = self._search_title_in_msg(msg, books_all)
         if found:
             b = found[0]
             icon = "✅" if b.statut == "disponible" else ("📤" if b.statut == "emprunté" else "🔖")
-            others = ""
+            extras = ""
             if len(found) > 1:
-                others = "\n\nAutres résultats similaires :\n" + "\n".join(
+                extras = "\n\nRésultats similaires :\n" + "\n".join(
                     [f"  • «{x.titre}» — {x.auteur}" for x in found[1:4]]
                 )
             return (
@@ -438,66 +541,65 @@ class ChatbotView(ctk.CTkFrame):
                 f"  📅  Année     : {b.annee_publication or 'Inconnue'}\n"
                 f"  {icon}  Statut   : {b.statut.capitalize()}\n"
                 f"  📦  Quantité  : {b.quantite_disponible} exemplaire(s)"
-                + others
+                + extras
             )
 
-        # ── 10. Greetings ─────────────────────────────────────────────────────
+        # 10. Greetings
         if any(w in ml for w in ["bonjour", "salut", "bonsoir", "hello", "hi"]):
             return (
-                "Bonjour ! 😊  Je suis votre assistant bibliothécaire.\n\n"
-                "Comment puis-je vous aider aujourd'hui ?\n"
+                "Bonjour ! 😊  Je suis votre assistant bibliothécaire Claude IA.\n\n"
+                "Comment puis-je vous aider ?\n"
                 "• Chercher un livre par titre ou ID\n"
                 "• Vérifier la disponibilité\n"
                 "• Recommandations par genre\n"
                 "• Statistiques de la bibliothèque"
             )
 
-        # ── 11. Help ──────────────────────────────────────────────────────────
-        if any(w in ml for w in ["aide", "help", "comment", "que peux-tu", "que peut"]):
+        # 11. Help
+        if any(w in ml for w in ["aide", "help", "comment", "que peux-tu"]):
             return (
-                "🆘  Voici ce que je peux faire :\n\n"
-                "🔍  Chercher un livre :\n"
-                "    → «Est-ce que Dune existe ?»\n"
-                "    → «Livre avec l'ID 5»\n\n"
-                "✅  Vérifier la disponibilité :\n"
-                "    → «Les Misérables est-il disponible ?»\n\n"
-                "📚  Recommandations :\n"
-                "    → «Recommande-moi un roman historique»\n\n"
-                "👤  Recherche par auteur :\n"
-                "    → «Livres de Victor Hugo»\n\n"
-                "📊  Statistiques :\n"
-                "    → «Combien de livres avez-vous ?»"
+                "🆘  Ce que je peux faire :\n\n"
+                "🔍  «Est-ce que Dune existe ?»\n"
+                "🔍  «Livre avec l'ID 5»\n"
+                "✅  «Les Misérables est-il disponible ?»\n"
+                "📚  «Recommande-moi un roman historique»\n"
+                "👤  «Livres de Victor Hugo»\n"
+                "📊  «Combien de livres avez-vous ?»"
             )
 
-        # ── 12. Default ───────────────────────────────────────────────────────
+        # 12. Default
         s = self.controller.get_stats()
         return (
-            f"🤔  Je n'ai pas bien compris votre demande.\n\n"
-            f"La bibliothèque contient actuellement {s['total']} livres "
-            f"({s['disponible']} disponibles).\n\n"
-            f"Essayez par exemple :\n"
+            f"🤔  Je n'ai pas bien compris.\n\n"
+            f"La bibliothèque contient {s['total']} livres ({s['disponible']} disponibles).\n\n"
+            f"Exemples :\n"
             f"  • «Est-ce que 1984 est disponible ?»\n"
             f"  • «Recommande-moi un roman»\n"
             f"  • «Livres de Victor Hugo»\n"
-            f"  • «Livre avec l'ID 3»\n"
-            f"  • «Statistiques de la bibliothèque»"
+            f"  • «Livre avec l'ID 3»"
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _search_title_in_msg(self, msg, books_all):
-        """Find books whose title words appear in the message."""
         ml = msg.lower()
         stop = {"le","la","les","un","une","des","de","du","est","ce","que","qui",
                 "avec","dans","pour","sur","par","je","tu","il","elle","nous","vous",
-                "ils","elles","et","ou","mais","donc","or","ni","car","si","the","a",
-                "avez","vous","peut","puis","cherche","livre","livres","auteur","titre",
-                "existe","trouvez","trouver","disponible","emprunté","réservé","quel"}
+                "ils","elles","et","ou","mais","si","the","a","avez","peut","puis",
+                "cherche","livre","livres","auteur","titre","existe","disponible",
+                "emprunté","réservé","quel","quels","est-ce"}
         scored = []
         for b in books_all:
-            title_words = [w for w in re.sub(r"[^a-zà-ö\s]", "", b.titre.lower()).split() if w not in stop and len(w) > 2]
-            author_words = [w for w in b.auteur.lower().split() if w not in stop and len(w) > 2]
-            score = sum(1 for w in title_words if w in ml) + sum(0.5 for w in author_words if w in ml)
+            title_words = [
+                w for w in re.sub(r"[^a-zà-ö\s]", "", b.titre.lower()).split()
+                if w not in stop and len(w) > 2
+            ]
+            author_words = [
+                w for w in b.auteur.lower().split()
+                if w not in stop and len(w) > 2
+            ]
+            score = (sum(1   for w in title_words  if w in ml) +
+                     sum(0.5 for w in author_words if w in ml))
             if score > 0:
                 scored.append((score, b))
         scored.sort(key=lambda x: -x[0])
@@ -505,14 +607,13 @@ class ChatbotView(ctk.CTkFrame):
 
     def _format_recommendations(self, pool, context_label):
         lines = []
-        for i, b in enumerate(pool[:6], 1):
+        for i, b in enumerate(pool[:5], 1):
             icon = "✅" if b.statut == "disponible" else ("📤" if b.statut == "emprunté" else "🔖")
-            lines.append(f"  {i}. «{b.titre}» — {b.auteur}\n"
-                         f"      {icon} {b.statut.capitalize()}  |  {b.categorie}")
-        return (
-            f"📚  Voici mes recommandations depuis {context_label} :\n\n"
-            + "\n\n".join(lines)
-        )
+            lines.append(
+                f"  {i}. «{b.titre}» — {b.auteur}\n"
+                f"      {icon} {b.statut.capitalize()}  |  {b.categorie}"
+            )
+        return f"📚  Recommandations depuis {context_label} :\n\n" + "\n\n".join(lines)
 
     def clear_conversation(self):
         for w in self.chat_scroll.winfo_children():
